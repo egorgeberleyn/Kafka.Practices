@@ -1,0 +1,33 @@
+--- Создание и настройка kafka table engine ---
+
+CREATE DATABASE KafkaEngine;
+
+USE KafkaEngine;
+
+CREATE TABLE github (
+    ...
+) ENGINE = MergeTree ORDER BY (event_type, repo_name, created_at)
+
+CREATE TABLE github_queue (
+...
+) ENGINE = Kafka( 'kafka_host:9092', 'github', 'clickhouse', 'JSONEachRow')
+settings kafka_thread_per_consumer = 0, kafka_num_consumers = 1;
+
+CREATE MATERIALIZED VIEW github_mv TO github AS SELECT * FROM github_queue;
+
+SELECT count () FROM github;
+
+
+--- Основные операции ---
+
+DETACH TABLE github_queue;          - остановить чтение
+
+ATTACH TABLE github_queue;          - продолжить чтение
+
+ALTER TABLE github                  - добавить метаданные
+    ADD COLUMN fopic String, 
+    ADD COLUMN partition UInt64;
+
+DROP VIEW github_mv;
+CREATE MATERIALIZED VIEW github_mv TO github AS SELECT *, _topic as topic, _partition as partition
+FROM github queue;
