@@ -6,11 +6,9 @@ namespace Kafka.Examples.Producers;
 
 public sealed class KafkaProducer : BackgroundService
 {
-    private const string TopicName = "demo-topic";
-    
     private readonly ProducerConfig _producerCfg = new()
     {
-        BootstrapServers = "localhost:29091,localhost:29092,localhost:29093", //указание брокеров Кафки
+        BootstrapServers = KafkaMetadata.BootstrapServers, //указание брокеров Кафки
         Acks = Acks.Leader, //указание acks параметра
         LingerMs = 50, //задержка на отправку сообщения в Кафку
         BatchNumMessages = 100_000, // макс.размер пачки сообщений, которая отправляется в Кафку
@@ -23,7 +21,7 @@ public sealed class KafkaProducer : BackgroundService
     {
         _logger = logger;
         _producer = new ProducerBuilder<Null, string>(_producerCfg)
-            .SetPartitioner(TopicName, (topicName, partitionCount, keyData, keyIsNull) => //стратегия распределения по партициям
+            .SetPartitioner(KafkaMetadata.TopicName, (topicName, partitionCount, keyData, keyIsNull) => //стратегия распределения по партициям
             {
                 var keyString = Encoding.UTF8.GetString(keyData.ToArray());
                 return int.Parse(keyString.Split(" ").Last()) % partitionCount;
@@ -85,7 +83,7 @@ public sealed class KafkaProducer : BackgroundService
         try
         {
             var result = await _producer.ProduceAsync(
-                TopicName,
+                KafkaMetadata.TopicName,
                 new Message<Null, string> { Value = "Hello Kafka" },
                 stoppingToken
             );
@@ -112,7 +110,7 @@ public sealed class KafkaProducer : BackgroundService
     {
         return new TopicSpecification
         {
-            Name = TopicName,
+            Name = KafkaMetadata.TopicName,
             NumPartitions = 3,
             ReplicationFactor = 1,
             Configs = new Dictionary<string, string>
