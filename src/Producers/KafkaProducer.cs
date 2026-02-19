@@ -1,34 +1,42 @@
 using System.Text;
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
+using Microsoft.Extensions.Options;
 
 namespace Kafka.Examples.Producers;
 
-public sealed class KafkaProducer : BackgroundService
+public sealed class KafkaProducer<TMessage> : BackgroundService
+    where TMessage: class 
 {
-    private readonly ProducerConfig _producerCfg = new()
-    {
-        BootstrapServers = KafkaMetadata.BootstrapServers, //указание брокеров Кафки
-        Acks = Acks.Leader, //указание acks параметра
-        LingerMs = 50, //задержка на отправку сообщения в Кафку
-        BatchNumMessages = 100_000, // макс.размер пачки сообщений, которая отправляется в Кафку
-    };
-
     private readonly IProducer<Null, string> _producer;
-    private readonly ILogger<KafkaProducer> _logger;
+    private readonly KafkaOptions _kafkaOptions;
+    private readonly ILogger<KafkaProducer<TMessage>> _logger;
 
-    public KafkaProducer(ILogger<KafkaProducer> logger, IKafkaTopicsCreator topicsCreator)
+    public KafkaProducer(
+        IOptions<KafkaOptions> kafkaOptions, 
+        ILogger<KafkaProducer<TMessage>> logger, 
+        IKafkaTopicsCreator topicsCreator)
     {
+        _kafkaOptions = kafkaOptions.Value;
         _logger = logger;
-        _producer = new ProducerBuilder<Null, string>(_producerCfg)
-            .SetPartitioner(KafkaMetadata.TopicName, (topicName, partitionCount, keyData, keyIsNull) => //стратегия распределения по партициям
+        
+        var producerCfg = new ProducerConfig
+        {
+            BootstrapServers = _kafkaOptions.BootstrapServers, //указание брокеров Кафки
+            Acks = Acks.Leader, //указание acks параметра
+            LingerMs = 50, //задержка на отправку сообщения в Кафку
+            BatchNumMessages = 100_000, // макс.размер пачки сообщений, которая отправляется в Кафку
+        };
+        
+        _producer = new ProducerBuilder<Null, string>(producerCfg)
+            .SetPartitioner(_kafkaOptions.TopicName, (topicName, partitionCount, keyData, keyIsNull) => //стратегия распределения по партициям
             {
                 var keyString = Encoding.UTF8.GetString(keyData.ToArray());
                 return int.Parse(keyString.Split(" ").Last()) % partitionCount;
             })
             .SetValueSerializer(new JsonValueSerializer<string>()) //установка сериализатора для сообщений Кафки
             .Build();
-        topicsCreator.CreateTopicAsync(_producerCfg.BootstrapServers, GetTopicSpecification());
+        topicsCreator.CreateTopicAsync(producerCfg.BootstrapServers, GetTopicSpecification());
     }
     
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
@@ -59,7 +67,7 @@ public sealed class KafkaProducer : BackgroundService
                     _logger.LogInformation("Produced: {Message}", message);
 
                     await _producer.ProduceAsync(
-                        "demo-topic",
+                        _kafkaOptions.TopicName,
                         new Message<Null, string>
                         {
                             Headers = new Headers
@@ -83,7 +91,7 @@ public sealed class KafkaProducer : BackgroundService
         try
         {
             var result = await _producer.ProduceAsync(
-                KafkaMetadata.TopicName,
+                _kafkaOptions.TopicName,
                 new Message<Null, string> { Value = "Hello Kafka" },
                 stoppingToken
             );
@@ -106,11 +114,11 @@ public sealed class KafkaProducer : BackgroundService
         return batchMessagesCount;
     }
 
-    private static TopicSpecification GetTopicSpecification()
+    private TopicSpecification GetTopicSpecification()
     {
         return new TopicSpecification
         {
-            Name = KafkaMetadata.TopicName,
+            Name = _kafkaOptions.TopicName,
             NumPartitions = 3,
             ReplicationFactor = 1,
             Configs = new Dictionary<string, string>

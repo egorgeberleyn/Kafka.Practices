@@ -3,6 +3,9 @@ using Kafka.Examples.MessageSink;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
+builder.Services.AddOptions<KafkaOptions>(name: KafkaOptions.SectionName);
+
 builder.Services.AddHostedService<KafkaMessageSink<string>>();
 builder.Services.AddSingleton<IMessageSink<string>>(sp => 
     (sp.GetRequiredService<IEnumerable<IHostedService>>()

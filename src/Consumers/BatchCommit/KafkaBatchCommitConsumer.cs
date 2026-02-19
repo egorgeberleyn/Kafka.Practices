@@ -1,43 +1,41 @@
 using System.Threading.Channels;
 using Confluent.Kafka;
-using Kafka.Examples.Consumers.BatchCommit;
+using Microsoft.Extensions.Options;
 
-namespace Kafka.Examples.Consumers;
-
-public sealed record KafkaMessage(
-    string Value,
-    TopicPartition Partition,
-    Offset Offset);
+namespace Kafka.Examples.Consumers.BatchCommit;
 
 //Обработка по схеме consume → enqueue → consume → enqueue → worker pool → commit batch
 public class KafkaBatchCommitConsumer : BackgroundService
 {
-    private readonly IConsumer<Null, string> _consumer;
-    private readonly OffsetsManager _offsetsManager;
-    private readonly Channel<KafkaMessage> _commitLog; // Внутренняя очередь сообщений на обработку воркерами
-    private readonly ILogger<KafkaBatchCommitConsumer> _logger;
-    
+    private readonly KafkaOptions _kafkaOptions;
     private const int WorkerCount = 4;
-    private const int CommitLogSize = 1000;
+    private const int InternalChannelSize = 1000;
     private static readonly TimeSpan CommiterDelay = TimeSpan.FromSeconds(3);
     
-    private readonly ConsumerConfig _consumerCfg = new()
-    {
-        BootstrapServers = KafkaMetadata.BootstrapServers,
-        GroupId = KafkaMetadata.ConsumerGroupId, //Индентификатор группы потребителей.
-                                                 //Изменение идентификатора приведет к переобработке всех обработанных сообщений из топика
-        SessionTimeoutMs = 30_000,
-        AutoOffsetReset = AutoOffsetReset.Earliest, //указание с какого offset'a начинать чтение
-        MaxPollIntervalMs = 5 * 60 * 1000, //время на обработку одного сообщения для consumer'а
-        EnableAutoCommit = false //явно коммитим сообщение при обработке
-    };
+    private readonly IConsumer<Null, string> _consumer;
+    private readonly BatchCommitLog _batchCommitLog;
+    private readonly Channel<KafkaMessage> _internalChannel; // Внутренняя очередь сообщений на обработку воркерами
+    private readonly ILogger<KafkaBatchCommitConsumer> _logger;
 
-    public KafkaBatchCommitConsumer(ILogger<KafkaBatchCommitConsumer> logger)
+    public KafkaBatchCommitConsumer(IOptions<KafkaOptions> kafkaOptions, ILogger<KafkaBatchCommitConsumer> logger)
     {
+        _kafkaOptions = kafkaOptions.Value;
         _logger = logger;
-        _consumer = new ConsumerBuilder<Null, string>(_consumerCfg).Build();
-        _offsetsManager = new OffsetsManager(_consumer);
-        _commitLog = Channel.CreateBounded<KafkaMessage>(new BoundedChannelOptions(CommitLogSize)
+        
+         var consumerCfg = new ConsumerConfig
+        {
+            BootstrapServers = _kafkaOptions.BootstrapServers,
+            GroupId = _kafkaOptions.ConsumerGroupId, //Индентификатор группы потребителей.
+            //Изменение идентификатора приведет к переобработке всех обработанных сообщений из топика
+            SessionTimeoutMs = 30_000,
+            AutoOffsetReset = AutoOffsetReset.Earliest, //указание с какого offset'a начинать чтение
+            MaxPollIntervalMs = 5 * 60 * 1000, //время на обработку одного сообщения для consumer'а
+            EnableAutoCommit = false //явно коммитим сообщение при обработке
+        };
+        
+        _consumer = new ConsumerBuilder<Null, string>(consumerCfg).Build();
+        _batchCommitLog = new BatchCommitLog(_consumer);
+        _internalChannel = Channel.CreateBounded<KafkaMessage>(new BoundedChannelOptions(InternalChannelSize)
         {
             FullMode = BoundedChannelFullMode.Wait
         });
@@ -50,9 +48,9 @@ public class KafkaBatchCommitConsumer : BackgroundService
         
         try
         {
-            _consumer.Subscribe(KafkaMetadata.TopicName); //подписка consumer_group на topic
+            _consumer.Subscribe(_kafkaOptions.TopicName); //подписка consumer_group на topic
             
-            _logger.LogInformation("Kafka consumer started for topic {Topic}", KafkaMetadata.TopicName);
+            _logger.LogInformation("Kafka consumer started for topic {Topic}", _kafkaOptions.TopicName);
             
             workerTasks = Enumerable.Range(0, WorkerCount)
                 .Select(_ => Task.Run(() => WorkerTask(ct), ct))
@@ -71,7 +69,7 @@ public class KafkaBatchCommitConsumer : BackgroundService
                         consumeResult.TopicPartition,
                         consumeResult.Offset);
 
-                    await _commitLog.Writer.WriteAsync(msg, ct);
+                    await _internalChannel.Writer.WriteAsync(msg, ct);
                 }
                 catch (ConsumeException ex)
                 {
@@ -85,7 +83,7 @@ public class KafkaBatchCommitConsumer : BackgroundService
         }
         finally
         {
-            _commitLog.Writer.Complete();
+            _internalChannel.Writer.Complete();
 
             await Task.WhenAll(workerTasks);
             if (commitTask != null) await commitTask;
@@ -105,12 +103,12 @@ public class KafkaBatchCommitConsumer : BackgroundService
     
     private async Task WorkerTask(CancellationToken ct)
     {
-        await foreach (var msg in _commitLog.Reader.ReadAllAsync(ct))
+        await foreach (var msg in _internalChannel.Reader.ReadAllAsync(ct))
         {
             try
             {
                 await ProcessMessageAsync(msg, ct); // имитация обработки сообщения
-                _offsetsManager.MarkProcessed(msg.Partition, msg.Offset); // помечаем сообщение как обработанное и добавляем его в коммит-лог
+                _batchCommitLog.MarkProcessed(msg.Partition, msg.Offset); // помечаем сообщение как обработанное и добавляем его в коммит-лог
             }
             catch (Exception ex)
             {
@@ -127,7 +125,7 @@ public class KafkaBatchCommitConsumer : BackgroundService
 
             try
             {
-                _offsetsManager.Commit();
+                _batchCommitLog.Commit();
             }
             catch (Exception ex)
             {

@@ -1,4 +1,3 @@
-using System.Text;
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
 

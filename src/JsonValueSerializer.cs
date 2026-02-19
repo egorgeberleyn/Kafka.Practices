@@ -4,7 +4,7 @@ using Confluent.Kafka;
 
 namespace Kafka.Examples;
 
-public sealed class JsonValueSerializer<T> : ISerializer<T>, IDeserializer<T>
+public sealed class JsonValueSerializer<TMessage> : ISerializer<TMessage>, IDeserializer<TMessage>
 {
     private readonly JsonSerializerOptions _serializerOptions;
 
@@ -14,15 +14,15 @@ public sealed class JsonValueSerializer<T> : ISerializer<T>, IDeserializer<T>
         _serializerOptions.Converters.Add(new JsonStringEnumConverter());
     }
     
-    public byte[] Serialize(T data, SerializationContext context) =>
+    public byte[] Serialize(TMessage data, SerializationContext context) =>
         JsonSerializer.SerializeToUtf8Bytes(data, _serializerOptions);
 
-    public T Deserialize(ReadOnlySpan<byte> data, bool isNull, SerializationContext context)
+    public TMessage Deserialize(ReadOnlySpan<byte> data, bool isNull, SerializationContext context)
     {
         if (isNull)
             throw new ArgumentNullException(nameof(data), "Null data encountered");
 
-        return JsonSerializer.Deserialize<T>(data, _serializerOptions) 
+        return JsonSerializer.Deserialize<TMessage>(data, _serializerOptions) 
                ?? throw new ArgumentNullException(nameof(data), "Null data encountered");
     }
 }

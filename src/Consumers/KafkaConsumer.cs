@@ -1,41 +1,48 @@
 using Confluent.Kafka;
+using Microsoft.Extensions.Options;
 
 namespace Kafka.Examples.Consumers;
 
 //Обработка по схеме consume → process → commit → consume → process → commit
-public class KafkaConsumer : BackgroundService
+public class KafkaConsumer<TMessage> : BackgroundService
+    where TMessage: class 
 {
-    private readonly IConsumer<Null, string> _consumer;
-    private readonly ILogger<KafkaConsumer> _logger;
-    
-    private readonly ConsumerConfig _consumerCfg = new()
-    {
-        BootstrapServers = KafkaMetadata.BootstrapServers,
-        GroupId = KafkaMetadata.ConsumerGroupId, //Индентификатор группы потребителей.
-                                                 //Изменение идентификатора приведет к переобработке всех обработанных сообщений из топика
-        SessionTimeoutMs = 30_000,
-        AutoOffsetReset = AutoOffsetReset.Earliest, //указание с какого offset'a начинать чтение
-        MaxPollIntervalMs = 5 * 60 * 1000, //время на обработку одного сообщения для consumer'а
-        EnableAutoCommit = false //явно коммитим сообщение при обработке
-    };
+    private readonly KafkaOptions _kafkaOptions;
+    private readonly IConsumer<Null, TMessage> _consumer;
+    private readonly ILogger<KafkaConsumer<TMessage>> _logger;
 
-    public KafkaConsumer(ILogger<KafkaConsumer> logger)
+    public KafkaConsumer(IOptions<KafkaOptions> kafkaOptions, ILogger<KafkaConsumer<TMessage>> logger)
     {
+        _kafkaOptions = kafkaOptions.Value;
         _logger = logger;
-        _consumer = new ConsumerBuilder<Null, string>(_consumerCfg).Build();
+        
+         var consumerCfg = new ConsumerConfig()
+        {
+            BootstrapServers = _kafkaOptions.BootstrapServers,
+            GroupId = _kafkaOptions.ConsumerGroupId, //Индентификатор группы потребителей.
+            //Изменение идентификатора приведет к переобработке всех обработанных сообщений из топика
+            SessionTimeoutMs = 30_000,
+            AutoOffsetReset = AutoOffsetReset.Earliest, //указание с какого offset'a начинать чтение
+            MaxPollIntervalMs = 5 * 60 * 1000, //время на обработку одного сообщения для consumer'а
+            EnableAutoCommit = false //явно коммитим сообщение при обработке
+        };
+        
+        _consumer = new ConsumerBuilder<Null, TMessage>(consumerCfg)
+            .SetValueDeserializer(new JsonValueSerializer<TMessage>()) //установка десериализатора для сообщений Кафки
+            .Build();
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
         try
         {
-            _consumer.Subscribe(KafkaMetadata.TopicName); //подписка consumer_group на topic
+            _consumer.Subscribe(_kafkaOptions.TopicName); //подписка consumer_group на topic
             
-            _logger.LogInformation("Kafka consumer started for topic {Topic}", KafkaMetadata.TopicName);
+            _logger.LogInformation("Kafka consumer started for topic {Topic}", _kafkaOptions.TopicName);
             
-            while (!stoppingToken.IsCancellationRequested)
+            while (!ct.IsCancellationRequested)
             {
-                await ProcessMessageAsync(stoppingToken);
+                await ProcessMessageAsync(ct);
             }
         }
         catch (OperationCanceledException)
@@ -49,13 +56,13 @@ public class KafkaConsumer : BackgroundService
         }
     }
 
-    private async Task ProcessMessageAsync(CancellationToken stoppingToken)
+    private async Task ProcessMessageAsync(CancellationToken ct)
     {
         try
         {
-            var result = _consumer.Consume(stoppingToken);
+            var result = _consumer.Consume(ct);
 
-            await Task.Delay(1000, stoppingToken); // имитация обработки сообщения
+            await Task.Delay(Random.Shared.Next(50,200), ct); // имитация обработки сообщения
             _consumer.Commit(result);
 
             _logger.LogInformation(
@@ -69,6 +76,7 @@ public class KafkaConsumer : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Consume error");
+            // Стратегии обработки ошибок: retry (delay topic) / dlq (dead letter queue) / skip + commit
         }
     }
 }
