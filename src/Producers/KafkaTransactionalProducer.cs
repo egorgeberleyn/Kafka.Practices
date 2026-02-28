@@ -3,7 +3,7 @@ using Confluent.Kafka.Admin;
 
 namespace Kafka.Examples.Producers;
 
-//Паттерн consume–process–produce
+//Паттерн Consume–Process–Produce
 public sealed class KafkaTransactionalProducer : BackgroundService
 {
     private const string InitialTopicName = "initial-demo-topic";

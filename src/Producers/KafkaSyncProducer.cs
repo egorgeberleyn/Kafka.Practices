@@ -11,7 +11,7 @@ public sealed class KafkaSyncProducer : BackgroundService
     {
         BootstrapServers = "localhost:29091,localhost:29092,localhost:29093", //указание брокеров Кафки
         Acks = Acks.All,              // ждём подтверждения от всех реплик
-        EnableIdempotence = true,     // гарантируем exactly-once семантику
+        EnableIdempotence = true,     // включаем идемпотентность на стороне продюсера (гарантируем exactly-once семантику)
         
         // увеличиваем число повторных попыток и паузу между ретраями
         MessageSendMaxRetries = 5,    

@@ -10,7 +10,7 @@ public class KafkaBatchCommitConsumer : BackgroundService
     private readonly KafkaOptions _kafkaOptions;
     private const int WorkerCount = 4;
     private const int InternalChannelSize = 1000;
-    private static readonly TimeSpan CommiterDelay = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan CommiterDelay = TimeSpan.FromSeconds(5);
     
     private readonly IConsumer<Null, string> _consumer;
     private readonly BatchCommitLog _batchCommitLog;
