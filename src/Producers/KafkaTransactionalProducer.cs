@@ -57,7 +57,7 @@ public sealed class KafkaTransactionalProducer : BackgroundService
             await _producer.ProduceAsync(DestinationTopicName, new Message<string, string>
             {
                 Key = "test-key",
-                Value = "test-value"
+                Value = $"test-value with value:{message.Message.Value}"
             }, stoppingToken);
             
             // фиксируем offset вместе с транзакцией
@@ -81,7 +81,7 @@ public sealed class KafkaTransactionalProducer : BackgroundService
         {
             Name = DestinationTopicName,
             NumPartitions = 3,
-            ReplicationFactor = 1,
+            ReplicationFactor = 3,
             Configs = new Dictionary<string, string>
             {
                 { "min.insync.replicas", "2" }

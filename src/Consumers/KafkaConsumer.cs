@@ -105,7 +105,7 @@ public class KafkaConsumer<TMessage> : BackgroundService
             _consumer.Commit(result);
 
             _logger.LogInformation(
-                "Consumed {Message}, Partition: {Partition}, Offset: {Offset}", result.Message.Value,
+                "Consumed message, Partition: {Partition}, Offset: {Offset}",
                 result.Partition.Value, result.Offset.Value);
         }
         catch (OperationCanceledException)

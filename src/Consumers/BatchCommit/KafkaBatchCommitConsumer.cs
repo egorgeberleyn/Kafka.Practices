@@ -14,7 +14,7 @@ public class KafkaBatchCommitConsumer : BackgroundService
     
     private readonly IConsumer<Null, string> _consumer;
     private readonly BatchCommitLog _batchCommitLog;
-    private readonly Channel<KafkaMessage> _internalChannel; // Внутренняя очередь сообщений на обработку воркерами
+    private readonly Channel<KafkaMessage<string>> _internalChannel; // Внутренняя очередь сообщений на обработку воркерами
     private readonly ILogger<KafkaBatchCommitConsumer> _logger;
 
     public KafkaBatchCommitConsumer(IOptions<KafkaOptions> kafkaOptions, ILogger<KafkaBatchCommitConsumer> logger)
@@ -35,7 +35,7 @@ public class KafkaBatchCommitConsumer : BackgroundService
         
         _consumer = new ConsumerBuilder<Null, string>(consumerCfg).Build();
         _batchCommitLog = new BatchCommitLog(_consumer);
-        _internalChannel = Channel.CreateBounded<KafkaMessage>(new BoundedChannelOptions(InternalChannelSize)
+        _internalChannel = Channel.CreateBounded<KafkaMessage<string>>(new BoundedChannelOptions(InternalChannelSize)
         {
             FullMode = BoundedChannelFullMode.Wait
         });
@@ -64,7 +64,7 @@ public class KafkaBatchCommitConsumer : BackgroundService
                 {
                     var consumeResult = _consumer.Consume(ct);
 
-                    var msg = new KafkaMessage(
+                    var msg = new KafkaMessage<string>(
                         consumeResult.Message.Value,
                         consumeResult.TopicPartition,
                         consumeResult.Offset);
@@ -93,7 +93,7 @@ public class KafkaBatchCommitConsumer : BackgroundService
         }
     }
     
-    private async Task ProcessMessageAsync(KafkaMessage msg, CancellationToken ct)
+    private async Task ProcessMessageAsync(KafkaMessage<string> msg, CancellationToken ct)
     {
         await Task.Delay(TimeSpan.FromMilliseconds(200), ct); 
         _logger.LogInformation(

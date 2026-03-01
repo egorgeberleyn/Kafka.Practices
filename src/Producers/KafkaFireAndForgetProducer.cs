@@ -1,9 +1,11 @@
+using System.Text.Json;
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
 
 namespace Kafka.Examples.Producers;
 
-public sealed class KafkaFireAndForgetProducer : BackgroundService
+public sealed class KafkaFireAndForgetProducer<TMessage> : IProducer<TMessage>
+    where TMessage: class 
 {
      private const string TopicName = "demo-fire-forget-produce-topic";
     
@@ -24,9 +26,11 @@ public sealed class KafkaFireAndForgetProducer : BackgroundService
     };
 
     private readonly IProducer<Null, string> _producer;
-    private readonly ILogger<KafkaFireAndForgetProducer> _logger;
+    private readonly ILogger<KafkaFireAndForgetProducer<TMessage>> _logger;
     
-    public KafkaFireAndForgetProducer(ILogger<KafkaFireAndForgetProducer> logger, IKafkaTopicsCreator topicsCreator)
+    public KafkaFireAndForgetProducer(
+        ILogger<KafkaFireAndForgetProducer<TMessage>> logger, 
+        IKafkaTopicsCreator topicsCreator)
     {
         _logger = logger;
         _producer = new ProducerBuilder<Null, string>(_producerCfg)
@@ -36,11 +40,11 @@ public sealed class KafkaFireAndForgetProducer : BackgroundService
     }
     
     //Пример fire and forget отправки в Кафку
-    protected override Task ExecuteAsync(CancellationToken cancellationToken)
+    public Task ProduceAsync(TMessage message, CancellationToken cancellationToken)
     {
         try
         {
-            _producer.Produce(TopicName, new Message<Null, string> { Value = "Hello Kafka again" });
+            _producer.Produce(TopicName, new Message<Null, string> { Value = JsonSerializer.Serialize(message) });
         }
         catch (ProduceException<string, string> e) //Контролировать ошибки через ProduceException
         {
@@ -62,13 +66,5 @@ public sealed class KafkaFireAndForgetProducer : BackgroundService
                 { "min.insync.replicas", "1" }
             }
         };
-    }
-
-    public override Task StopAsync(CancellationToken cancellationToken)
-    {
-        _producer.Flush(cancellationToken);
-        _producer.Dispose();
-        
-        return Task.CompletedTask;
     }
 }
