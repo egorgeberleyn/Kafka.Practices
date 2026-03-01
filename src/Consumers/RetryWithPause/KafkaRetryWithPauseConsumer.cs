@@ -2,7 +2,7 @@ using System.Threading.Channels;
 using Confluent.Kafka;
 using Microsoft.Extensions.Options;
 
-namespace Kafka.Examples.Consumers;
+namespace Kafka.Examples.Consumers.RetryWithPause;
 
 //консьмер с обработкой ошибок через паузу консьюма
 public class KafkaRetryWithPauseConsumer<TMessage> : BackgroundService
