@@ -5,6 +5,9 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "common", "common", "{4A27FF86-C77F-4D7D-9460-91124993CCDB}"
 	ProjectSection(SolutionItems) = preProject
 		common\kafka.yaml = common\kafka.yaml
+		common\BatchingConsumerHost.png = common\BatchingConsumerHost.png
+		common\ScalableConsumerHost.png = common\ScalableConsumerHost.png
+		common\ConsumerHost.png = common\ConsumerHost.png
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "pg-kafka-ch", "pg-kafka-ch", "{E1FB786D-EF29-4DBA-BF85-C54B3355DA91}"

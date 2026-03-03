@@ -22,7 +22,7 @@ public sealed class KafkaFireAndForgetProducer<TMessage> : IProducer<TMessage>
         // Увеличиваем производительность
         LingerMs = 5,               // ждем 5ms чтобы собрать батч
         BatchSize = 64 * 1024,      // увеличенный размер батча
-        CompressionType = CompressionType.Snappy, // компрессия сообщений
+        CompressionType = CompressionType.Snappy, // компрессия сообщений (более высокая производительность чем gzip)
     };
 
     private readonly IProducer<Null, string> _producer;
