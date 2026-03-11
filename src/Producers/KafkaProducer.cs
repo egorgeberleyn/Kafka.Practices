@@ -24,9 +24,21 @@ public sealed class KafkaProducer<TMessage> : IProducer<TMessage>
         var producerCfg = new ProducerConfig
         {
             BootstrapServers = _kafkaOptions.BootstrapServers, //указание брокеров Кафки
-            Acks = Acks.Leader, //указание acks параметра
-            BatchNumMessages = 100_000, // макс.размер пачки сообщений, которая отправляется в Кафку
-            LingerMs = 50, //задержка на отправку пачки сообщений в Кафку
+            Acks = Acks.All,  // ждём подтверждения от всех in-sync реплик
+            EnableIdempotence = true,     // включаем идемпотентность (гарантируем exactly-once семантику на стороне продюсера)
+            
+            
+            BatchNumMessages = 1_000, // макс кол-во сообщений в батче, который отправляется в Кафку (опционально)
+            BatchSize = 32 * 1024, // размер батча сообщений в байтах (опционально)
+            
+            //задержка на отправку пачки сообщений в Кафку (опционально)
+            LingerMs = 50, 
+            
+            // число повторных попыток и пауза между ретраями (опционально)
+            MessageSendMaxRetries = 3,    
+            RetryBackoffMs = 100,
+            
+            //Partitioner = Partitioner.ConsistentRandom // выбор стратегии распределения сообщений по партициям, можно настроить свою ч-з SetPartitioner
         };
         
         _producer = new ProducerBuilder<Null, string>(producerCfg)
@@ -40,6 +52,7 @@ public sealed class KafkaProducer<TMessage> : IProducer<TMessage>
         topicsCreator.CreateTopicAsync(producerCfg.BootstrapServers, GetTopicSpecification());
     }
     
+    //Пример отправки сообщения в Кафку
     public async Task ProduceAsync(TMessage message, CancellationToken cancellationToken)
     {
         try
@@ -62,7 +75,7 @@ public sealed class KafkaProducer<TMessage> : IProducer<TMessage>
                 deliveryResult.Partition.Value,
                 deliveryResult.Offset.Value);
         }
-        catch (ProduceException<string, string> e)
+        catch (ProduceException<string, string> e) //Контролируем ошибки через ProduceException
         {
             _logger.LogError("Produce error: {ErrorReason}", e.Error.Reason);
         }
@@ -78,10 +91,10 @@ public sealed class KafkaProducer<TMessage> : IProducer<TMessage>
         {
             Name = _kafkaOptions.TopicName,
             NumPartitions = 3,
-            ReplicationFactor = 1,
+            ReplicationFactor = 3, //для повышения отказоустойчивости репликация на 3 брокера
             Configs = new Dictionary<string, string>
             {
-                { "min.insync.replicas", "1" }
+                { "min.insync.replicas", "2" } // на одну меньше чем replication.factor
             }
         };
     }
